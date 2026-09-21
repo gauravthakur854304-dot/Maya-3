@@ -14,7 +14,20 @@ import {
   Lock,
   Unlock,
   Radio,
+  BarChart3,
+  Activity,
+  AudioWaveform as WaveformIcon,
 } from 'lucide-react';
+import {
+  ResponsiveContainer,
+  RadarChart,
+  PolarGrid,
+  PolarAngleAxis,
+  PolarRadiusAxis,
+  Radar,
+  Tooltip,
+  Legend,
+} from 'recharts';
 import { VoiceSample, VoiceVerificationResult, VoiceAuthState } from '../types';
 import {
   startMicrophoneAnalysis,
@@ -205,6 +218,94 @@ export const VoiceAuthPanel: React.FC<VoiceAuthPanelProps> = ({
     }
   };
 
+  // Summary Statistics Calculations
+  const totalSamplesCount = voiceSamples.length;
+  const enrolledSamples = voiceSamples.filter((s) => s.isEnrolled);
+  const enrolledSamplesCount = enrolledSamples.length;
+  const averageRms =
+    enrolledSamples.length > 0
+      ? enrolledSamples.reduce((acc, s) => acc + (s.rmsLevel || 0), 0) / enrolledSamples.length
+      : 0;
+  const enrollmentRate = totalSamplesCount > 0 ? Math.round((enrolledSamplesCount / totalSamplesCount) * 100) : 0;
+  
+  const rmsLevels = enrolledSamples.map((s) => s.rmsLevel || 0);
+  const peakRms = rmsLevels.length > 0 ? Math.max(...rmsLevels) : 0;
+  const minRms = rmsLevels.length > 0 ? Math.min(...rmsLevels) : 0;
+
+  // Radar chart data points (scaled to 0-100 for optical balance)
+  const radarChartData = [
+    {
+      metric: 'Enrolled Samples',
+      shortLabel: 'Samples',
+      current: Math.round((enrolledSamplesCount / totalSamplesCount) * 100),
+      recommended: 100,
+      rawValue: `${enrolledSamplesCount} / ${totalSamplesCount}`,
+      benchmarkDisplay: '3 / 3 (100%)',
+    },
+    {
+      metric: 'Average RMS',
+      shortLabel: 'Avg RMS',
+      current: Math.min(100, Math.round((averageRms / 0.18) * 100)),
+      recommended: 70,
+      rawValue: `${averageRms.toFixed(3)} RMS`,
+      benchmarkDisplay: '0.120 RMS',
+    },
+    {
+      metric: 'Slot 1 Energy',
+      shortLabel: 'Slot 1',
+      current: Math.min(100, Math.round(((voiceSamples[0]?.rmsLevel || 0) / 0.18) * 100)),
+      recommended: 65,
+      rawValue: `${(voiceSamples[0]?.rmsLevel || 0).toFixed(3)} RMS`,
+      benchmarkDisplay: '0.110 RMS',
+    },
+    {
+      metric: 'Slot 2 Energy',
+      shortLabel: 'Slot 2',
+      current: Math.min(100, Math.round(((voiceSamples[1]?.rmsLevel || 0) / 0.18) * 100)),
+      recommended: 65,
+      rawValue: `${(voiceSamples[1]?.rmsLevel || 0).toFixed(3)} RMS`,
+      benchmarkDisplay: '0.110 RMS',
+    },
+    {
+      metric: 'Slot 3 Energy',
+      shortLabel: 'Slot 3',
+      current: Math.min(100, Math.round(((voiceSamples[2]?.rmsLevel || 0) / 0.18) * 100)),
+      recommended: 65,
+      rawValue: `${(voiceSamples[2]?.rmsLevel || 0).toFixed(3)} RMS`,
+      benchmarkDisplay: '0.110 RMS',
+    },
+    {
+      metric: 'Threshold Target',
+      shortLabel: 'Security',
+      current: Math.round(voiceThreshold * 100),
+      recommended: 75,
+      rawValue: `${(voiceThreshold * 100).toFixed(0)}%`,
+      benchmarkDisplay: '75%',
+    },
+  ];
+
+  const renderRadarTooltip = ({ active, payload }: any) => {
+    if (active && payload && payload.length) {
+      const data = payload[0].payload;
+      return (
+        <div className="bg-slate-900 text-white rounded-xl shadow-lg p-3 text-xs border border-slate-700 min-w-[170px]">
+          <p className="font-bold text-slate-200 mb-1">{data.metric}</p>
+          <div className="space-y-1">
+            <div className="flex justify-between items-center text-indigo-300 font-medium">
+              <span>Profile Value:</span>
+              <span className="font-mono font-bold text-white">{data.rawValue} ({data.current}%)</span>
+            </div>
+            <div className="flex justify-between items-center text-sky-400 text-[11px]">
+              <span>Recommended:</span>
+              <span className="font-mono">{data.benchmarkDisplay}</span>
+            </div>
+          </div>
+        </div>
+      );
+    }
+    return null;
+  };
+
   return (
     <div className="space-y-6">
       {/* Overview Banner */}
@@ -246,6 +347,212 @@ export const VoiceAuthPanel: React.FC<VoiceAuthPanelProps> = ({
                 <span>Renew Turn</span>
               </button>
             </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Summary Statistics & Acoustic Radar Section */}
+      <div id="voice-summary-statistics" className="bg-white rounded-2xl p-6 border border-slate-200 shadow-xs">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6 pb-4 border-b border-slate-100">
+          <div>
+            <div className="flex items-center gap-2">
+              <BarChart3 className="w-5 h-5 text-indigo-600" />
+              <h3 className="font-bold text-slate-900 text-base">
+                Voice Profile Summary Statistics
+              </h3>
+            </div>
+            <p className="text-xs text-slate-500 mt-0.5">
+              Acoustic health overview, enrolled samples distribution, and multi-dimensional RMS radar matrix.
+            </p>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <span
+              className={`px-3 py-1 rounded-full text-xs font-semibold flex items-center gap-1.5 ${
+                enrolledSamplesCount === 3
+                  ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                  : enrolledSamplesCount > 0
+                  ? 'bg-amber-50 text-amber-700 border border-amber-200'
+                  : 'bg-slate-100 text-slate-600 border border-slate-200'
+              }`}
+            >
+              <Activity className="w-3.5 h-3.5" />
+              <span>
+                {enrolledSamplesCount === 3
+                  ? 'Optimal Multi-Sample Ready'
+                  : `${enrolledSamplesCount} of 3 Samples Enrolled`}
+              </span>
+            </span>
+          </div>
+        </div>
+
+        {/* 4 Summary Stat Cards */}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+          {/* Card 1: Total Enrolled Samples */}
+          <div className="p-4 rounded-xl bg-slate-50 border border-slate-100 space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
+                Enrolled Samples
+              </span>
+              <CheckCircle className="w-4 h-4 text-indigo-600" />
+            </div>
+            <div className="flex items-baseline gap-2">
+              <span className="text-2xl font-black text-slate-900 tracking-tight">
+                {enrolledSamplesCount}
+              </span>
+              <span className="text-xs font-semibold text-slate-400">
+                / {totalSamplesCount} slots
+              </span>
+            </div>
+            <div className="w-full bg-slate-200 h-1.5 rounded-full overflow-hidden">
+              <div
+                className="bg-indigo-600 h-full rounded-full transition-all duration-500"
+                style={{ width: `${enrollmentRate}%` }}
+              />
+            </div>
+            <span className="text-[10px] text-slate-500 block">
+              {enrollmentRate}% completion rate
+            </span>
+          </div>
+
+          {/* Card 2: Average RMS Level */}
+          <div className="p-4 rounded-xl bg-slate-50 border border-slate-100 space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
+                Average RMS Level
+              </span>
+              <Volume2 className="w-4 h-4 text-emerald-600" />
+            </div>
+            <div className="flex items-baseline gap-2">
+              <span className="text-2xl font-black text-slate-900 tracking-tight font-mono">
+                {averageRms.toFixed(3)}
+              </span>
+              <span className="text-xs font-semibold text-slate-400">RMS</span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <span
+                className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                  averageRms >= 0.08
+                    ? 'bg-emerald-100 text-emerald-800'
+                    : averageRms >= 0.04
+                    ? 'bg-sky-100 text-sky-800'
+                    : 'bg-amber-100 text-amber-800'
+                }`}
+              >
+                {averageRms >= 0.08 ? 'Strong Signal' : averageRms >= 0.04 ? 'Moderate' : 'Low Signal'}
+              </span>
+            </div>
+            <span className="text-[10px] text-slate-500 block">
+              Nominal speech range: 0.06 - 0.18
+            </span>
+          </div>
+
+          {/* Card 3: Acoustic Range */}
+          <div className="p-4 rounded-xl bg-slate-50 border border-slate-100 space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
+                Acoustic Range
+              </span>
+              <Radio className="w-4 h-4 text-sky-600" />
+            </div>
+            <div className="flex items-baseline gap-1.5">
+              <span className="text-2xl font-black text-slate-900 tracking-tight font-mono">
+                {peakRms > 0 ? (peakRms - minRms).toFixed(3) : '0.000'}
+              </span>
+              <span className="text-xs font-semibold text-slate-400">Δ RMS</span>
+            </div>
+            <div className="flex justify-between text-[10px] text-slate-500 font-mono">
+              <span>Min: {minRms.toFixed(3)}</span>
+              <span>Peak: {peakRms.toFixed(3)}</span>
+            </div>
+            <span className="text-[10px] text-slate-400 block">
+              Energy variance across recordings
+            </span>
+          </div>
+
+          {/* Card 4: Verification Readiness */}
+          <div className="p-4 rounded-xl bg-slate-50 border border-slate-100 space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
+                Security Profile
+              </span>
+              <ShieldCheck className="w-4 h-4 text-indigo-600" />
+            </div>
+            <div className="flex items-baseline gap-2">
+              <span className="text-2xl font-black text-slate-900 tracking-tight">
+                {(voiceThreshold * 100).toFixed(0)}%
+              </span>
+              <span className="text-xs font-semibold text-slate-400">Lock Threshold</span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-indigo-100 text-indigo-800">
+                Fail-Closed Active
+              </span>
+            </div>
+            <span className="text-[10px] text-slate-500 block">
+              3-State verification ready
+            </span>
+          </div>
+        </div>
+
+        {/* Radar Chart Component */}
+        <div className="bg-slate-50/70 rounded-xl p-5 border border-slate-200/80">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-2">
+            <div>
+              <h4 className="font-bold text-slate-800 text-sm flex items-center gap-2">
+                <WaveformIcon className="w-4 h-4 text-indigo-600" />
+                <span>Multi-Sample Acoustic Radar</span>
+              </h4>
+              <p className="text-xs text-slate-500">
+                Geometric visualization balancing enrolled samples, individual slot energy, and average RMS level.
+              </p>
+            </div>
+            <div className="flex items-center gap-4 text-xs">
+              <div className="flex items-center gap-1.5">
+                <span className="w-3 h-3 rounded bg-indigo-500 inline-block" />
+                <span className="font-medium text-slate-700">Enrolled Voice Profile</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <span className="w-3 h-3 rounded bg-sky-400 inline-block border border-dashed border-sky-600" />
+                <span className="font-medium text-slate-500">Recommended Baseline</span>
+              </div>
+            </div>
+          </div>
+
+          <div id="voice-auth-radar-chart" className="w-full h-80 min-w-0">
+            <ResponsiveContainer width="100%" height="100%">
+              <RadarChart cx="50%" cy="50%" outerRadius="75%" data={radarChartData}>
+                <PolarGrid stroke="#cbd5e1" strokeDasharray="3 3" />
+                <PolarAngleAxis
+                  dataKey="metric"
+                  tick={{ fill: '#334155', fontSize: 11, fontWeight: 600 }}
+                />
+                <PolarRadiusAxis
+                  angle={30}
+                  domain={[0, 100]}
+                  stroke="#94a3b8"
+                  tick={{ fill: '#64748b', fontSize: 10 }}
+                />
+                <Tooltip content={renderRadarTooltip} />
+                <Radar
+                  name="Enrolled Voice Profile"
+                  dataKey="current"
+                  stroke="#4f46e5"
+                  strokeWidth={2}
+                  fill="#6366f1"
+                  fillOpacity={0.4}
+                />
+                <Radar
+                  name="Recommended Baseline"
+                  dataKey="recommended"
+                  stroke="#0284c7"
+                  strokeWidth={1.5}
+                  strokeDasharray="4 4"
+                  fill="#38bdf8"
+                  fillOpacity={0.12}
+                />
+              </RadarChart>
+            </ResponsiveContainer>
           </div>
         </div>
       </div>
