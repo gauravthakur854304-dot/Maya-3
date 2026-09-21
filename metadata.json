@@ -1,0 +1,6 @@
+{
+  "name": "MYRA v2.2.3",
+  "description": "Voice-authenticated AI assistant with multi-sample speaker embeddings, Gemini Live speech, conversation memory, and Google Drive backup.",
+  "requestFramePermissions": ["microphone"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
